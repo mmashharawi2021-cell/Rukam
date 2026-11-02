@@ -1,3 +1,4 @@
+import type { SurveyGeometry, SurveyEstimate } from './surveyMath';
 export type SiteStatus = 'needs_review' | 'verified' | 'planned' | 'active' | 'completed';
 export type WorkStatus = 'draft' | 'approved' | 'active' | 'completed';
 export type TripStatus = 'pending' | 'received' | 'disputed';
@@ -5,6 +6,8 @@ export type Site = {
   id: string; name: string; governorate: string; area: string;
   lat: number; lng: number; estimatedVolume: number; category: string;
   status: SiteStatus; safetyReview: boolean; note: string; createdAt: string;
+  geometry?: SurveyGeometry;
+  survey?: SurveyEstimate & {recordedAt:string; riskFlags:string[]};
 };
 export type WorkOrder = { id: string; siteId: string; contractor: string; targetVolume: number; status: WorkStatus; createdAt: string };
 export type Trip = { id: string; orderId: string; vehicle: string; volume: number; facility: string; status: TripStatus; date: string };

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
+import SurveyWorkspace, { type SurveySubmission } from './SurveyWorkspace';
+import { representativePoint, validSurveyGeometry } from './surveyMath';
 import {
   Activity, AlertTriangle, ArrowDownToLine, ArrowLeft, ArrowRight, BarChart3, Bell,
   Building2, CheckCircle2, ChevronDown, ChevronLeft, CircleHelp, ClipboardCheck,
@@ -59,6 +61,10 @@ function MapView({sites,onPick,selectedId,large=false}:{sites:Site[];onPick:(id:
     for(const site of sites) {
       if (!Number.isFinite(site.lat)||!Number.isFinite(site.lng)) continue;
       const c=colorFor(site.status);
+      if(validSurveyGeometry(site.geometry)&&site.geometry.type==='Polygon'){
+        const coords=site.geometry.coordinates[0].map(([lng,lat])=>[lat,lng] as L.LatLngTuple);
+        L.polygon(coords,{color:c,weight:2,fillColor:c,fillOpacity:.22,interactive:false}).addTo(group);
+      }
       L.circleMarker([site.lat,site.lng],{
         radius:site.id===selectedId?12:9,color:'#ffffff',weight:site.id===selectedId?3:2,
         fillColor:c,fillOpacity:0.94
@@ -76,6 +82,7 @@ function MapView({sites,onPick,selectedId,large=false}:{sites:Site[];onPick:(id:
 const nav = [
   {id:'dashboard',label:'نظرة عامة',icon:LayoutDashboard},
   {id:'sites',label:'خريطة ومواقع الركام',icon:MapPin},
+  {id:'survey',label:'الحصر والرسم الجغرافي',icon:Layers3},
   {id:'orders',label:'أوامر العمل',icon:ClipboardList},
   {id:'trips',label:'النقل والحمولات',icon:Truck},
   {id:'facilities',label:'مرافق الاستلام',icon:Factory},
@@ -87,6 +94,7 @@ type Dialog = 'site'|'order'|'trip'|null;
 const pageMeta:Record<Page,{title:string;lead:string}>={
   dashboard:{title:'نظرة عامة',lead:'ملخص عمليات إدارة الركام الجغرافية'},
   sites:{title:'خريطة ومواقع الركام',lead:'إدارة سجلات المواقع وخصائصها ومراجعات السلامة'},
+  survey:{title:'الحصر والرسم الجغرافي',lead:'رسم المواقع وقياس مساحاتها وتقدير كميات الركام مع عدم اليقين'},
   orders:{title:'أوامر العمل',lead:'متابعة أوامر العمل التجريبية وربطها بالمواقع المعتمدة'},
   trips:{title:'النقل والحمولات',lead:'تسجيل الحمولات وإثباتات الاستلام ومراجعة المطابقة'},
   facilities:{title:'مرافق الاستلام',lead:'أرصدة الاستلام وفق السجلات التجريبية المرتبطة'},
@@ -133,6 +141,20 @@ export default function App(){
     const site:Site={id:uid('RG'),name:title,area,governorate:String(f.get('governorate')),lat,lng,estimatedVolume:volume,category:String(f.get('category')),status:'needs_review',safetyReview:false,note:String(f.get('note')||''),createdAt:asDate()};
     setDb(d=>({...d,sites:[site,...d.sites],audit:[log('إضافة موقع توضيحي '+site.id),...d.audit]}));setSelected(site.id);setDialog(null);tell('تمت إضافة الموقع التجريبي');return true;
   };
+  const saveSurvey=(record:SurveySubmission)=>{
+    const [lng,lat]=representativePoint(record.geometry);
+    const site:Site={
+      id:uid('RG'),name:record.name,area:record.area,governorate:record.governorate,
+      lat,lng,estimatedVolume:record.estimate.volumeM3,category:record.category,
+      status:'needs_review',safetyReview:false,note:record.note,createdAt:asDate(),
+      geometry:record.geometry,
+      survey:{...record.estimate,riskFlags:record.risks,recordedAt:new Date().toISOString()}
+    };
+    setDb(d=>({...d,sites:[site,...d.sites],
+      audit:[log('إضافة حصر GIS تجريبي '+site.id+' بكمية '+site.estimatedVolume+' م³'),...d.audit]}));
+    setSelected(site.id);
+    tell('تم تسجيل الحصر كمسودة غير معتمدة');
+  };
   const updateSite=(id:string,next:SiteStatus)=>{
     const s=db.sites.find(x=>x.id===id);if(!s)return;
     if(next!=='needs_review'&&!s.safetyReview){tell('لا يمكن تغيير الحالة قبل مراجعة السلامة بواسطة جهة مختصة');return;}
@@ -169,7 +191,7 @@ export default function App(){
     setDb(d=>({...d,trips:d.trips.map(x=>x.id===t.id?{...x,status}:x),audit:[log('تحديث حمولة '+t.id+' إلى '+tripStatuses[status].label),...d.audit]}));tell('تم تحديث سجل الحمولة');
   };
   const geoExport=()=>{
-    const features=db.sites.map(s=>({type:'Feature',geometry:{type:'Point',coordinates:[s.lng,s.lat]},properties:{id:s.id,name:s.name,governorate:s.governorate,estimatedVolume:s.estimatedVolume,category:s.category,status:s.status,reviewed:s.safetyReview,demo:true}}));
+    const features=db.sites.map(s=>({type:'Feature',geometry:validSurveyGeometry(s.geometry)?s.geometry:{type:'Point',coordinates:[s.lng,s.lat]},properties:{id:s.id,name:s.name,governorate:s.governorate,estimatedVolume:s.estimatedVolume,category:s.category,status:s.status,reviewed:s.safetyReview,demo:true}}));
     download(JSON.stringify({type:'FeatureCollection',features},null,2),'rukamgis-demo-sites.geojson','application/geo+json;charset=utf-8');tell('تم تنزيل GeoJSON');
   };
   const csvExport=()=>{
@@ -227,6 +249,7 @@ export default function App(){
           <section className="panel data-table-panel"><CardTitle title="سجل مواقع الركام" sub="المواقع قابلة للبحث والفرز والتصدير" action={<div className="export-actions"><button className="small-button" onClick={geoExport}><FileJson size={16}/> GeoJSON</button><button className="small-button" onClick={csvExport}><FileSpreadsheet size={16}/> CSV</button></div>}/><div className="table-scroll"><table><thead><tr><th>رقم الموقع</th><th>الموقع / المنطقة</th><th>المحافظة</th><th>الكمية التقديرية</th><th>مراجعة السلامة</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>{filtered.map(s=><tr key={s.id} className={selected===s.id?'row-selected':''}><td className="mono">{s.id}</td><td><b>{s.name}</b><small>{s.area}</small></td><td>{s.governorate}</td><td>{fmt(s.estimatedVolume)} م³</td><td>{s.safetyReview?<span className="verify"><CheckCircle2 size={15}/> موثقة تجريبيًا</span>:<span className="not-verify"><ShieldAlert size={15}/> لم تُراجع</span>}</td><td>{statusBadge(s.status)}</td><td><button className="table-action" onClick={()=>setSelected(s.id)}>عرض <ChevronLeft size={14}/></button></td></tr>)}</tbody></table>{filtered.length===0&&<Empty title="لا توجد نتائج" detail="غيّر معايير التصفية أو أضف موقعًا جديدًا"/>}</div></section>
         </>}
 
+        {page==='survey'&&<SurveyWorkspace sites={db.sites} onCreate={saveSurvey} onViewSites={()=>changePage('sites')}/>}
         {page==='orders'&&<><section className="kpi-grid kpi-three"><Kpi title="إجمالي أوامر العمل" value={fmt(db.orders.length)} suffix="أمر" desc="الأوامر المنشأة في العرض" icon={ClipboardList} shade="blue"/><Kpi title="الأوامر النشطة" value={fmt(activeOrders)} suffix="أمر" desc="معتمدة أو قيد المتابعة" icon={Activity} shade="teal"/><Kpi title="مسودات وتحت الإعداد" value={fmt(db.orders.filter(o=>o.status==='draft').length)} suffix="أمر" desc="لم تعتمد إداريًا" icon={Clock3} shade="orange"/></section><section className="panel data-table-panel"><CardTitle title="قائمة أوامر العمل" sub="لا يمكن اعتماد أمر يرتبط بموقع لم تُراجع سلامته"/><div className="table-scroll"><table><thead><tr><th>رقم الأمر</th><th>موقع الركام</th><th>فريق التنفيذ</th><th>الكمية المستهدفة</th><th>الحالة</th><th>تغيير الحالة</th></tr></thead><tbody>{db.orders.map(o=><tr key={o.id}><td className="mono">{o.id}</td><td><b>{db.sites.find(s=>s.id===o.siteId)?.name||'موقع غير معروف'}</b><small>{o.siteId}</small></td><td>{o.contractor}</td><td>{fmt(o.targetVolume)} م³</td><td><span className="badge badge-blue">{workStatuses[o.status]}</span></td><td><select aria-label={'تغيير حالة '+o.id} value={o.status} onChange={e=>changeOrder(o,e.target.value as WorkStatus)}>{Object.entries(workStatuses).map(([k,v])=><option value={k} key={k}>{v}</option>)}</select></td></tr>)}</tbody></table>{!db.orders.length&&<Empty title="لا توجد أوامر" detail="أنشئ أمر عمل مرتبطًا بموقع تمت مراجعته"/>}</div></section></>}
 
         {page==='trips'&&<><section className="kpi-grid kpi-three"><Kpi title="رحلات مسجلة" value={fmt(db.trips.length)} suffix="رحلة" desc="سجل الحمولات التجريبي" icon={Truck} shade="blue"/><Kpi title="كمية مستلمة" value={fmt(received)} suffix="م³" desc="حسب سجلات الاستلام" icon={CheckCircle2} shade="teal"/><Kpi title="قيد المطابقة والاستلام" value={fmt(db.trips.filter(t=>t.status!=='received').length)} suffix="رحلة" desc="غير محسوبة ضمن المستلم" icon={AlertTriangle} shade="orange"/></section><section className="panel data-table-panel"><CardTitle title="سجل الحمولات" sub="لا تدخل الأحجام غير المستلمة ضمن إجمالي الكمية المعتمدة في العرض"/><div className="table-scroll"><table><thead><tr><th>رقم الحمولة</th><th>أمر العمل</th><th>الموقع</th><th>رمز المركبة</th><th>الكمية</th><th>مرفق الاستلام</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody>{db.trips.map(t=><tr key={t.id}><td className="mono">{t.id}</td><td className="mono">{orderLabel(t.orderId)}</td><td>{orderSite(t.orderId)}</td><td className="mono">{t.vehicle}</td><td>{fmt(t.volume)} م³</td><td>{t.facility}</td><td><span className={'badge badge-'+tripStatuses[t.status].tone}>{tripStatuses[t.status].label}</span></td><td><select aria-label={'حالة الحمولة '+t.id} value={t.status} onChange={e=>changeTrip(t,e.target.value as TripStatus)}>{Object.entries(tripStatuses).map(([k,v])=><option value={k} key={k}>{v.label}</option>)}</select></td></tr>)}</tbody></table>{!db.trips.length&&<Empty title="لا توجد حمولات" detail="سجل حمولة جديدة لأمر عمل معتمد"/>}</div></section></>}
@@ -237,7 +260,7 @@ export default function App(){
 
         {page==='settings'&&<><section className="two-col settings-layout"><div className="panel"><CardTitle title="حفظ البيانات ونقلها" sub="نسخة محلية على الجهاز، لا توجد مزامنة تلقائية"/><div className="setting-actions"><button onClick={exportBackup}><Download size={20}/><span><strong>تنزيل نسخة احتياطية</strong><small>يحفظ السجلات في ملف JSON مستقل</small></span><ChevronLeft size={18}/></button><button onClick={()=>fileRef.current?.click()}><UploadCloud size={20}/><span><strong>استيراد نسخة تجريبية</strong><small>تستبدل السجلات المحلية بعد التأكيد</small></span><ChevronLeft size={18}/></button><button onClick={restore}><RotateCcw size={20}/><span><strong>إعادة بيانات العرض الأصلية</strong><small>يحذف التعديلات التجريبية في المتصفح</small></span><ChevronLeft size={18}/></button></div><input ref={fileRef} className="sr-only" type="file" accept=".json,application/json" onChange={e=>void importBackup(e.target.files?.[0])}/></div><div className="panel"><CardTitle title="حالة الجاهزية" sub="تحديد واضح لما هو متاح وما هو قيد التطوير"/><div className="readiness-list"><div><CheckCircle2 size={18}/><span>خرائط وإدارة بيانات توضيحية</span><b>متاح</b></div><div><CheckCircle2 size={18}/><span>التقارير والتصدير المحلي</span><b>متاح</b></div><div className="pending"><Clock3 size={18}/><span>PostGIS وقاعدة بيانات مركزية</span><b>لاحقًا</b></div><div className="pending"><Clock3 size={18}/><span>دخول المستخدمين والصلاحيات</span><b>لاحقًا</b></div><div className="pending"><Clock3 size={18}/><span>تدقيق مركزي واعتمادات فعلية</span><b>لاحقًا</b></div><div className="pending"><Clock3 size={18}/><span>مزامنة PWA والعمل الميداني</span><b>لاحقًا</b></div></div></div></section><section className="panel"><CardTitle title="سجل نشاط هذه النسخة" sub="سجل محلي توضيحي غير محصن ضد التعديل"/><div className="audit-list">{db.audit.slice(0,15).map(a=><div key={a.id}><div className="audit-dot"/><span>{a.action}</span><small>{a.at}</small></div>)}</div></section></>}
       </main>
-      <footer className="footer"><span>RukamGIS v0.1 · منصة تجريبية لإدارة بيانات الركام</span><span>غير مخصص للاستخدام التشغيلي الفعلي · © 2026</span></footer>
+      <footer className="footer"><span>RukamGIS v0.2 · منصة تجريبية لإدارة بيانات الركام</span><span>غير مخصص للاستخدام التشغيلي الفعلي · © 2026</span></footer>
     </div>
 
     {dialog&&<div className="dialog-shade" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setDialog(null)}}><div className="modal" role="dialog" aria-modal="true" aria-label={dialog==='site'?'إضافة موقع ركام':dialog==='order'?'إضافة أمر عمل':'إضافة حمولة'}><div className="modal-head"><div><span>RUKAMGIS / NEW RECORD</span><h2>{dialog==='site'?'إضافة موقع ركام':dialog==='order'?'إنشاء أمر عمل': 'تسجيل حمولة نقل'}</h2><p>يُحفظ السجل في متصفحك لغرض العرض فقط</p></div><button className="icon-button" onClick={()=>setDialog(null)} aria-label="إغلاق"><X size={20}/></button></div>

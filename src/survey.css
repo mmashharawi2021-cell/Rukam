@@ -1,0 +1,45 @@
+/* RukamGIS v0.2 field survey, consistent with the approved Earth Theme. */
+.survey-layout{display:flex;flex-direction:column;gap:18px}
+.survey-intro{display:flex;align-items:center;justify-content:space-between;gap:15px;background:#FFF9EF;border:1px solid #E3D5C0;border-radius:14px;padding:20px 22px}
+.survey-intro strong{font-size:15px;color:#384537}
+.survey-intro p{font-size:11px;line-height:1.9;color:#626962;margin:5px 0 0}
+.survey-intro .btn{flex:none}
+.survey-workspace{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(345px,1fr);gap:17px;align-items:start}
+.survey-map-panel{overflow:hidden;position:sticky;top:15px}
+.survey-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:13px;border-bottom:1px solid #DED4C9;background:#FFFCF8}
+.survey-tool{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:#F5EFE7;color:#5E665C;border:1px solid #DCCFC1;border-radius:8px;padding:9px 10px;font-size:10px;font-weight:800;min-height:38px;transition:background .16s ease}
+.survey-tool:hover:not(:disabled){background:#EAE1D5}
+.survey-tool.is-active{background:#A64F35;color:#FFF;border-color:#98422D;box-shadow:0 3px 9px #A64F352B}
+.survey-tool:disabled{opacity:.45;cursor:not-allowed}
+.survey-map{height:min(58vh,560px);min-height:380px;z-index:0;background:#E6EDE3;cursor:crosshair}
+.survey-map .leaflet-container{background:#E6EDE3}
+.survey-map .leaflet-tile{filter:saturate(.76) sepia(.07)}
+.survey-map-foot{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;padding:12px 16px;color:#667365;background:#F8F3EB;border-top:1px solid #E2D6C6;font-size:10px}
+.survey-map-foot span{display:inline-flex;align-items:center;gap:8px}
+.survey-map-foot b{color:#8F5039}
+.survey-map-tip{font-size:10px;line-height:1.9;color:#6D766A;margin:0;padding:10px 16px 16px}
+.survey-form-panel{overflow:hidden}
+.survey-form{display:flex;flex-direction:column;gap:14px;padding:2px 21px 22px}
+.survey-form label{display:flex;flex-direction:column;gap:6px;color:#434E43;font-size:11px;font-weight:700}
+.survey-form input,.survey-form textarea,.survey-form select{width:100%;border:1px solid #D7CABB;background:#FFFDF9;color:#323B31;border-radius:8px;padding:10px 12px;font-size:11px;min-width:0;min-height:41px}
+.survey-form input:focus-visible,.survey-form select:focus-visible,.survey-form textarea:focus-visible{outline-color:#A64F35}
+.survey-form-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.survey-estimator{background:#F7F0E6;border:1px solid #E3D6C6;border-radius:13px;padding:15px;display:flex;flex-direction:column;gap:11px}
+.survey-estimator h4{display:flex;align-items:center;gap:8px;font-size:12px;margin:0 0 3px;color:#82533B}
+.survey-computed{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:#5D655A}
+.survey-computed strong{color:#A64F35;font-size:13px}
+.survey-result{background:#FFFDF9;border:1px solid #E3D9C9;border-radius:10px;padding:13px;display:flex;flex-direction:column;gap:5px}
+.survey-result>span{font-size:11px;color:#5B655B}
+.survey-result strong{font-size:25px;line-height:1.3;color:#80513D;letter-spacing:-.4px}
+.survey-result small{font-size:10px;color:#627164;line-height:1.8}
+.survey-risks{border:1px solid #DACBB7;border-radius:10px;padding:10px 12px;background:#FFFDF8}
+.survey-risks legend{font-size:11px;font-weight:700;color:#765B3B;padding:0 6px}
+.survey-risks label{display:flex;flex-direction:row;align-items:center;font-size:10px;font-weight:500;gap:9px;min-height:26px}
+.survey-risks input[type=checkbox]{width:15px;min-height:15px;height:15px;accent-color:#6B7A66}
+.survey-warning{display:flex;align-items:start;gap:8px;font-size:10px;line-height:1.9;background:#FFF1D9;color:#72521E;border:1px solid #E6C697;border-radius:9px;padding:11px;margin:0}
+.survey-warning svg{flex:none;margin-top:2px}
+.survey-message{background:#E8F1E9;color:#43664C;border:1px solid #BCD2C0;border-radius:8px;padding:10px 12px;margin:0;font-size:11px}
+.survey-form-actions{display:flex;justify-content:space-between;gap:8px}
+.survey-form-actions .btn{flex:1}
+@media(max-width:1170px){.survey-workspace{grid-template-columns:minmax(0,1fr)}.survey-map-panel{position:static}.survey-map{height:440px}}
+@media(max-width:680px){.survey-intro{flex-direction:column;align-items:stretch;padding:15px}.survey-map{height:350px;min-height:300px}.survey-toolbar{gap:6px;padding:10px}.survey-tool{font-size:9px;padding:7px}.survey-form{padding:4px 14px 18px}.survey-form-row{grid-template-columns:1fr}.survey-map-foot{flex-direction:column}.survey-form-actions .btn{padding:0 8px;font-size:10px}}
