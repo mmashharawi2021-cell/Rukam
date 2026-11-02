@@ -1,0 +1,243 @@
+/*
+ * RukamGIS Earth Theme v0.2 — visual-only layer.
+ * Warm, institutional colors inspired by the approved concept.
+ * Keep layout, behaviors, class names, and data logic in styles.css / App.tsx.
+ * Never encode safety decisions using color alone.
+ */
+:root{
+  color-scheme:light;
+  --bg:#F5F3EE;
+  --panel:#FFFCF8;
+  --panel-light:#F0EBE3;
+  --border:#DFD6CA;
+  --muted:#626762;
+  --teal:#327C78;
+  --blue:#4F7DA7;
+  --primary:#A64F35;
+  --earth:#C0674B;
+  --olive:#6B7A66;
+  --sand:#E8D8C3;
+  --turquoise:#5FA9A6;
+  --charcoal:#2F2F2F;
+  --surface:#FFFCF8;
+  --surface-muted:#F1ECE5;
+  --ink:#2F2F2F;
+  --ink-muted:#626762;
+  --line:#DFD6CA;
+  --sidebar:#485848;
+  font-family:'Cairo',Tahoma,sans-serif;
+  color:var(--ink);
+  background:var(--bg);
+}
+body{color:var(--ink);background:var(--bg)}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline-color:#A64F35;outline-offset:3px;
+}
+/* App skeleton and navigation: preserve the original information architecture. */
+.app-shell{
+  color:var(--ink);
+  background:radial-gradient(ellipse 55% 35% at 53% -12%,#E8D8C388,transparent 90%),var(--bg);
+}
+.sidebar{
+  background:linear-gradient(172deg,#566652 0%,#485848 58%,#364638 100%);
+  border-left:1px solid #41523F;
+  box-shadow:-4px 0 27px #3445341B;
+  color:#FBF8F3;
+}
+.brand{border-bottom:1px solid #FFFFFF29}
+.brand-logo{
+  background:linear-gradient(145deg,#F0DCC7,#DBBCA2);
+  color:#96533A;
+  border-color:#F9EBDF;
+  box-shadow:0 7px 25px #1E301D35;
+}
+.tiny-star{background:#759A8A}
+.brand strong{color:#FFFCF8}
+.brand strong span{color:#F6D4BA}
+.brand small{color:#E0E9DA}
+.sidebar-group-label{color:#D7E2D5}
+.nav-item{color:#F0F0E9}
+.nav-item:hover{background:#FFFFFF23;color:#FFFFFF}
+.nav-item.active{
+  background:linear-gradient(90deg,#D6AD8E52,#D9B99B3F);
+  color:#FFFFFF;
+  border:1px solid #F0DCC580;
+}
+.nav-item.active svg{color:#FFE0BE}
+.active-indicator{background:#F3C19B}
+.sidebar-info{
+  background:linear-gradient(135deg,#677A64,#576B58);
+  border-color:#8D9B80;
+}
+.sidebar-info>svg{color:#F2D9BC}
+.sidebar-info strong{color:#FFFFFF}
+.sidebar-info span{color:#F0F0E8}
+.info-glow{background:#E8D8C344}
+.avatar,.top-avatar{color:#F9E6D6;background:#60745F;border-color:#9AAC93}
+.sidebar-profile small{color:#D2DED1}
+.sidebar-profile>svg{color:#D8E2D1}
+.topbar{
+  background:#FFFDF9;
+  border-bottom:1px solid var(--line);
+  box-shadow:0 2px 10px #5D4B3320;
+}
+.breadcrumb{color:#68685F}
+.breadcrumb b{color:#30352E}
+.demo-state{color:#42634A;background:#E5EFE5;border-color:#B8D1BA}
+.pulse,.live-indicator{background:#4F8C67;box-shadow:0 0 0 3px #4F8C6725}
+.icon-button{color:#687467}
+.icon-button:hover{color:#3A503E;background:#F0E8DF}
+.topbar .top-avatar{background:#E8E0D4;color:#455C49;border-color:#D0C6B8}
+.demo-notice{
+  background:#FFF1D9;
+  color:#72521E;
+  border:1px solid #E6C697;
+}
+.demo-notice>svg{color:#A16A28}
+.demo-notice button{color:#72521E}
+.eyebrow{color:#9D573D}
+.eyebrow span{background:#C0674B}
+.page-heading h1{color:#2F2F2F}
+.page-heading p,.current-date{color:#60655F}
+/* Controls: copper primary, olive secondary, consistent focus and contrast. */
+.btn-primary{background:#A64F35;color:#FFFFFF;box-shadow:0 8px 22px #A64F3526}
+.btn-primary:hover{background:#8D402C}
+.btn-outline{
+  background:#FFFCF8;color:#4A554A;border-color:#CDBFAB;
+}
+.btn-outline:hover{background:#F1E9DF}
+.btn-warning{background:#F3DBB5;color:#684418;border-color:#DAAF72}
+.btn-danger-outline{background:#FFF1EF;color:#943C3A;border-color:#DBA5A0}
+.text-link,.table-action{color:#9C4D34}
+.text-link:hover,.table-action:hover{color:#763520}
+/* Cards and charts on ivory instead of dark panels. */
+.kpi{
+  background:linear-gradient(130deg,#FFFCF8,#F7F0E8);
+  border-color:#E4D9CD;
+  box-shadow:0 7px 22px #75634B18;
+}
+.kpi-top{color:#555F55}
+.kpi-teal .kpi-icon{background:#E1F0ED;color:#377C73}
+.kpi-blue .kpi-icon{background:#E6EEF4;color:#4F7DA7}
+.kpi-purple .kpi-icon{background:#EFE7F0;color:#806481}
+.kpi-orange .kpi-icon{background:#F9E9D7;color:#A65D3F}
+.kpi-value strong{color:#2F2F2F}
+.kpi-value small,.kpi-desc{color:#677067}
+.kpi-decoration{border-color:#B89D7820;box-shadow:0 0 0 24px #B89D780A,0 0 0 48px #B89D7806}
+.panel{
+  background:#FFFCF8;
+  border-color:#DED4C9;
+  box-shadow:0 12px 28px #75634B13;
+}
+.card-title h3{color:#30352F}
+.card-title p{color:#69716B}
+.donut>div{background:#FFFCF8}
+.donut b,.status-list strong,.insight-summary b{color:#2F2F2F}
+.donut small,.status-list div,.insight-summary span{color:#5C685F}
+.mini-divider{background:#E5D9C9}
+.insight-summary span+span{border-color:#E2D8CA}
+.site-list-row{border-top-color:#E9DFD3;color:#2F2F2F}
+.site-list-row:hover{background:#F5EEE5}
+.site-row-copy small,.list-volume small{color:#6C746B}
+.list-volume{color:#353B34}
+.gov-row>div:first-child{color:#59665B}
+.gov-row b{color:#2F2F2F}
+.gov-bar{background:#E9E2D7}
+.gov-bar span{background:linear-gradient(90deg,#A0AD8C,#5F8B75)}
+/* Map controls and legends, while keeping real tiles / layer geometry intact. */
+.map-view,.map-leaflet{background:#E3E8DD}
+.leaflet-tile{filter:saturate(.78) sepia(.10) brightness(1.03) hue-rotate(-6deg)}
+.leaflet-control-attribution{background:#FFFCF8DC!important;color:#4B5548!important}
+.leaflet-control-attribution a{color:#356D70}
+.leaflet-bar a{
+  background:#FFFCF8!important;color:#485848!important;
+  border-bottom-color:#D8D0C3!important;
+}
+.leaflet-bar a:hover{background:#F0E9DF!important}
+.map-top-info,.map-legend{
+  background:#FFFCF8F2;color:#374536;
+  border:1px solid #D8CDBF;
+  box-shadow:0 5px 12px #4C48341F;
+}
+.map-top-info b{color:#8F8C7C}
+/* Filter panels, editable fields, attributes table. */
+.search-control{
+  background:#FFFDF9;
+  border-color:#D8CCBB;
+  color:#74756D;
+}
+.search-control input{color:#30352F}
+.search-control input::placeholder{color:#807E74}
+select{
+  background:#FFFDF9;
+  color:#30352F;
+  border-color:#D6C8B9;
+}
+.selected-heading small,.coordinates{color:#536E67}
+.selected-grid>div{background:#F7F2EB;border-color:#E2D8CA}
+.selected-grid small{color:#6D766E}
+.selected-grid b{color:#30352F}
+.selected-grid em{color:#5C685D}
+.note-text,.field{color:#5E685D}
+.field input,.field textarea,.field select{
+  background:#FFFDF9;
+  color:#30352F;
+  border-color:#D6C8B9;
+}
+.field input::placeholder,.field textarea::placeholder{color:#8B8A80}
+.small-button{border-color:#D7C8B7;background:#F4ECE2;color:#73573D}
+.small-button:hover{background:#EADCCB}
+th{background:#F1E8DE;color:#5F625B;border-color:#DDD1C4}
+td{color:#4C544D;border-top-color:#E6DDD2}
+td b{color:#30352F}
+td small{color:#737A72}
+tbody tr:hover{background:#F7F0E7}
+tbody tr.row-selected{background:#F1E1D2}
+.mono{color:#5E715E}
+.verify{color:#38734B}
+.not-verify{color:#8A631F}
+.empty{color:#718074}
+.empty strong{color:#3D5042}
+.facility-icon{background:#E5EDE2;color:#607F57}
+.facility-card>p,.facility-bottom,.facility-volume span{color:#5F6B62}
+.facility-volume{border-color:#E3D9CE}
+.facility-volume b{color:#30352F}
+.download-list button,.setting-actions button{
+  background:#F7F1E9;color:#7D5E4A;border-color:#E1D5C6;
+}
+.download-list button:hover,.setting-actions button:hover{background:#EFE5D8}
+.download-list button strong,.setting-actions button strong{color:#343A34}
+.download-list button small,.setting-actions button small{color:#6E776E}
+.report-footnotes p{color:#5E685E}
+.report-footnotes svg{color:#A87A35}
+.readiness-list>div,.audit-list>div{color:#4F5A50;border-color:#E8DED1}
+.readiness-list svg,.readiness-list b{color:#487A51}
+.readiness-list .pending svg,.readiness-list .pending b{color:#99711F}
+.audit-list small{color:#69776D}
+.audit-dot{background:#5FA9A6;box-shadow:0 0 0 4px #5FA9A628}
+.footer{border-color:#E2D7CA;color:#70766E}
+/* Semantic statuses must remain distinct; text labels accompany all colors. */
+.badge-amber{color:#795218;background:#FFF0D7;border-color:#EAC996}
+.badge-blue{color:#355C7E;background:#E7F0F6;border-color:#B6CADA}
+.badge-purple{color:#725878;background:#F1E9F2;border-color:#D4BFD7}
+.badge-cyan{color:#236E6B;background:#E1F1ED;border-color:#ABD5CB}
+.badge-green{color:#326B45;background:#E6F1E5;border-color:#B7D3B4}
+.badge-red{color:#A13935;background:#FAE7E4;border-color:#E4B3AD}
+/* Dialogs, warnings and notifications. */
+.dialog-shade{background:#25271DB8}
+.modal{background:#FFFCF8;color:#30352F;border-color:#DED3C4;box-shadow:0 25px 90px #30291C55}
+.modal-head,.modal-footer{border-color:#E2D8CA}
+.modal-head span{color:#99503A}
+.modal-head p{color:#616C61}
+.form-hint{background:#FFF2DC;border-color:#E5C69D;color:#78541A}
+.error-message{color:#AC4936}
+.toast{background:#496449;color:#FFFFFF;border-color:#6F8A6F;box-shadow:0 13px 40px #30291C38}
+.toast button{color:#FBE2C5}
+/* No new layout rules: existing breakpoints remain responsible for responsiveness. */
+@media(max-width:860px){
+  .sidebar{box-shadow:-14px 0 42px #273A2C45}
+  .sidebar-backdrop{background:#20291F7A}
+}
+@media(prefers-reduced-motion:reduce){
+  .kpi,.panel,.btn{transition:none}
+}
