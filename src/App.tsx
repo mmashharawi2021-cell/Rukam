@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import {
   type Audit, type DataStore, type Site, type SiteStatus, type WorkOrder, type WorkStatus,
-  type Trip, type FleetVehicle, seed, statuses, workStatuses, tripStatuses, governorates,
+  type Trip, type TripStatus, type FleetVehicle, seed, statuses, workStatuses, tripStatuses, governorates,
   facilities, number, csvSafe, uid
 } from './data';
 
