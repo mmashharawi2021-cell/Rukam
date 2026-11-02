@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import SurveyWorkspace, { type SurveySubmission } from './SurveyWorkspace';
+import OperationsWorkspace from './OperationsWorkspace';
+import { normalizeFleet, receiptMetrics, dispatchError, receiptError, applyReceipt,
+  resolveDispute, completionError, workOrderProgress, isExplicitReceipt } from './operations';
 import { representativePoint, validSurveyGeometry } from './surveyMath';
 import {
   Activity, AlertTriangle, ArrowDownToLine, ArrowLeft, ArrowRight, BarChart3, Bell,
@@ -12,7 +15,7 @@ import {
 } from 'lucide-react';
 import {
   type Audit, type DataStore, type Site, type SiteStatus, type WorkOrder, type WorkStatus,
-  type Trip, type TripStatus, seed, statuses, workStatuses, tripStatuses, governorates,
+  type Trip, type FleetVehicle, seed, statuses, workStatuses, tripStatuses, governorates,
   facilities, number, csvSafe, uid
 } from './data';
 
@@ -26,7 +29,8 @@ function loadStore():DataStore {
     const raw = localStorage.getItem(KEY);
     if (!raw) return copySeed();
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed.sites) && Array.isArray(parsed.orders) && Array.isArray(parsed.trips) && Array.isArray(parsed.audit)) return parsed;
+    if (Array.isArray(parsed.sites) && Array.isArray(parsed.orders) && Array.isArray(parsed.trips) && Array.isArray(parsed.audit))
+      return {...parsed,vehicles:normalizeFleet(parsed.vehicles,parsed.trips)};
   } catch { /* use safe demo seed */ }
   return copySeed();
 }
@@ -85,6 +89,8 @@ const nav = [
   {id:'survey',label:'الحصر والرسم الجغرافي',icon:Layers3},
   {id:'orders',label:'أوامر العمل',icon:ClipboardList},
   {id:'trips',label:'النقل والحمولات',icon:Truck},
+  {id:'fleet',label:'أسطول المركبات',icon:Truck},
+  {id:'reconciliation',label:'مطابقة الكميات',icon:ClipboardCheck},
   {id:'facilities',label:'مرافق الاستلام',icon:Factory},
   {id:'reports',label:'المؤشرات والتقارير',icon:FileBarChart2},
   {id:'settings',label:'الإعدادات والبيانات',icon:Settings2}
@@ -96,7 +102,9 @@ const pageMeta:Record<Page,{title:string;lead:string}>={
   sites:{title:'خريطة ومواقع الركام',lead:'إدارة سجلات المواقع وخصائصها ومراجعات السلامة'},
   survey:{title:'الحصر والرسم الجغرافي',lead:'رسم المواقع وقياس مساحاتها وتقدير كميات الركام مع عدم اليقين'},
   orders:{title:'أوامر العمل',lead:'متابعة أوامر العمل التجريبية وربطها بالمواقع المعتمدة'},
-  trips:{title:'النقل والحمولات',lead:'تسجيل الحمولات وإثباتات الاستلام ومراجعة المطابقة'},
+  trips:{title:'النقل والحمولات',lead:'إدارة تحميل الركام والاستلام بقياس منفصل ومحضر تجريبي'},
+  fleet:{title:'أسطول المركبات',lead:'تعريف المركبات والسعات وحالات الإتاحة التجريبية'},
+  reconciliation:{title:'مطابقة الكميات',lead:'فروقات التحميل والاستلام والتسوية والتقارير حسب الأمر والمرفق'},
   facilities:{title:'مرافق الاستلام',lead:'أرصدة الاستلام وفق السجلات التجريبية المرتبطة'},
   reports:{title:'المؤشرات والتقارير',lead:'تقارير تفصيلية قابلة للتصدير والبحث'},
   settings:{title:'الإعدادات والبيانات',lead:'إدارة البيانات المحلية ونسخ المشروع الاحتياطية'}
@@ -128,8 +136,9 @@ export default function App(){
   const reviewed=db.sites.filter(s=>s.safetyReview).length;
   const unreviewed=db.sites.length-reviewed;
   const totalEstimate=db.sites.reduce((a,s)=>a+(Number(s.estimatedVolume)||0),0);
-  const received=db.trips.filter(t=>t.status==='received').reduce((a,t)=>a+Number(t.volume||0),0);
-  const inTransit=db.trips.filter(t=>t.status==='pending').reduce((a,t)=>a+Number(t.volume||0),0);
+  const operations=receiptMetrics(db.trips);
+  const received=operations.confirmedM3;
+  const inTransit=operations.pendingM3;
   const activeOrders=db.orders.filter(o=>o.status==='approved'||o.status==='active').length;
   const totalByGov=governorates.map(g=>({g,count:db.sites.filter(s=>s.governorate===g).length,vol:db.sites.filter(s=>s.governorate===g).reduce((a,s)=>a+Number(s.estimatedVolume||0),0)}));
   const orderLabel=(id:string)=>db.orders.find(o=>o.id===id)?.id||id;
@@ -178,17 +187,62 @@ export default function App(){
   const changeOrder=(o:WorkOrder,status:WorkStatus)=>{
     const s=db.sites.find(x=>x.id===o.siteId);
     if(status!=='draft'&&!s?.safetyReview){tell('يتطلب التقدم في أمر العمل توثيق مراجعة السلامة');return;}
+    if(status==='completed'){const issue=completionError(o,s,db.trips);if(issue){tell(issue);return;}}
     setDb(d=>({...d,orders:d.orders.map(x=>x.id===o.id?{...x,status}:x),audit:[log('تحديث أمر عمل '+o.id+' إلى '+workStatuses[status]),...d.audit]}));tell('تم تحديث أمر العمل');
   };
-  const saveTrip=(f:FormData)=>{
-    const orderId=String(f.get('orderId'));const o=db.orders.find(x=>x.id===orderId);const vehicle=String(f.get('vehicle')||'').trim();const volume=Number(f.get('volume'));
-    if(!o||!['approved','active'].includes(o.status)||!vehicle||!Number.isFinite(volume)||volume<=0){tell('تحقق من الأمر المعتمد ورمز المركبة والكمية');return false;}
-    const t:Trip={id:uid('TR'),orderId,vehicle,volume,facility:String(f.get('facility')),status:'pending',date:asDate()};
-    setDb(d=>({...d,trips:[t,...d.trips],audit:[log('تسجيل حمولة توضيحية '+t.id),...d.audit]}));setDialog(null);tell('تم تسجيل الحمولة التجريبية');return true;
+  const saveVehicle=(rawCode:string,capacityM3:number,kind:string)=>{
+    const code=rawCode.trim().toUpperCase();
+    if(!/^[A-Z0-9_-]{3,32}$/.test(code)||!Number.isFinite(capacityM3)||capacityM3<=0||capacityM3>1000){
+      tell('رمز المركبة يجب أن يتكون من حروف إنجليزية وأرقام، والسعة بين 0 و1000 م³');return false;
+    }
+    if((db.vehicles||[]).some(v=>v.code===code)){tell('رمز المركبة مسجل بالفعل');return false;}
+    const vehicle:FleetVehicle={code,capacityM3,active:true,kind:kind.trim().slice(0,60)};
+    setDb(d=>({...d,vehicles:[...(d.vehicles||[]),vehicle],audit:[log('تسجيل مركبة تجريبية '+code),...d.audit]}));
+    tell('تمت إضافة المركبة التجريبية');return true;
   };
-  const changeTrip=(t:Trip,status:TripStatus)=>{
-    if(status==='received'&&!window.confirm('محاكاة توثيق استلام الحمولة؟ في النظام الحقيقي يتطلب ذلك إثبات استلام ومطابقة معتمدة.'))return;
-    setDb(d=>({...d,trips:d.trips.map(x=>x.id===t.id?{...x,status}:x),audit:[log('تحديث حمولة '+t.id+' إلى '+tripStatuses[status].label),...d.audit]}));tell('تم تحديث سجل الحمولة');
+  const toggleVehicle=(code:string)=>{
+    setDb(d=>({...d,vehicles:d.vehicles.map(v=>v.code===code?{...v,active:!v.active}:v),
+      audit:[log('تغيير إتاحة المركبة '+code),...d.audit]}));tell('تم تحديث حالة المركبة');
+  };
+  const saveTrip=(f:FormData)=>{
+    const orderId=String(f.get('orderId'));const o=db.orders.find(x=>x.id===orderId);
+    const vehicleCode=String(f.get('vehicle')).trim().toUpperCase();
+    const vehicle=db.vehicles.find(v=>v.code===vehicleCode);
+    const volume=Number(f.get('volume'));
+    const site=db.sites.find(s=>s.id===o?.siteId);
+    const issue=dispatchError(o,site,vehicle,volume,db.trips);
+    if(issue){tell(issue);return false;}
+    const facility=String(f.get('facility')||'');
+    if(!facilities.includes(facility)){tell('مرفق الاستلام غير معروف');return false;}
+    const t:Trip={id:uid('TR'),orderId,vehicle:vehicleCode,volume,facility,status:'pending',date:asDate()};
+    setDb(d=>({...d,trips:[t,...d.trips],audit:[log('تحميل تجريبي '+t.id+' '+volume+' م³ في '+vehicleCode),...d.audit]}));
+    setDialog(null);tell('سجلنا الحمولة بانتظار استلام منفصل');return true;
+  };
+  const receiveTrip=(t:Trip,quantity:number,ref:string)=>{
+    const current=db.trips.find(x=>x.id===t.id);if(!current){tell('الحمولة غير موجودة');return false;}
+    const issue=receiptError(current,quantity,ref,db.trips);if(issue){tell(issue);return false;}
+    if(!window.confirm('محاكاة تسجيل محضر استلام محلي؟ لا يمثل ذلك توقيعًا أو إثباتًا رسميًا.'))return false;
+    const updated=applyReceipt(current,quantity,ref,new Date().toISOString());
+    setDb(d=>({...d,trips:d.trips.map(x=>x.id===current.id?updated:x),
+      audit:[log('تسجيل قياس استلام '+current.id+' '+quantity+' م³: '+(updated.status==='disputed'?'فرق للمطابقة':'مطابق تجريبيًا')),...d.audit]}));
+    tell(updated.status==='disputed'?'تم تسجيل فرق يستلزم تسوية تجريبية':'تم تسجيل استلام مطابق تجريبيًا');return true;
+  };
+  const settleTrip=(t:Trip,note:string)=>{
+    const current=db.trips.find(x=>x.id===t.id);if(!current){tell('الحمولة غير موجودة');return false;}
+    if(!window.confirm('تسجيل تسوية افتراضية لهذا الفرق؟ لا تمثل موافقة مالية أو فنية معتمدة.'))return false;
+    try{
+      const updated=resolveDispute(current,note,new Date().toISOString());
+      setDb(d=>({...d,trips:d.trips.map(x=>x.id===current.id?updated:x),
+        audit:[log('تسوية فرق تجريبية '+current.id+'؛ السبب: '+note.trim().slice(0,120)),...d.audit]}));
+      tell('تم توثيق التسوية التجريبية دون تعديل كمية التحميل الأصلية');return true;
+    }catch(e){tell(e instanceof Error?e.message:'تعذر توثيق التسوية');return false;}
+  };
+  const exportOperationsCsv=()=>{
+    const rows=[['Trip','Order','Vehicle','Facility','Loaded m3','Received m3','Difference m3','Status','Receipt reference','Resolution note'],
+      ...db.trips.map(t=>[t.id,t.orderId,t.vehicle,t.facility,t.volume,t.receivedVolume??'',t.discrepancyM3??'',
+        t.status,isExplicitReceipt(t)?t.receiptRef:'',t.reconciliationNote??''])];
+    download(rows.map(row=>row.map(csvSafe).join(',')).join('\r\n'),'rukamgis-v03-operations.csv','text/csv;charset=utf-8');
+    tell('تم تصدير سجل العمليات التجريبي');
   };
   const geoExport=()=>{
     const features=db.sites.map(s=>({type:'Feature',geometry:validSurveyGeometry(s.geometry)?s.geometry:{type:'Point',coordinates:[s.lng,s.lat]},properties:{id:s.id,name:s.name,governorate:s.governorate,estimatedVolume:s.estimatedVolume,category:s.category,status:s.status,reviewed:s.safetyReview,demo:true}}));
@@ -208,7 +262,7 @@ export default function App(){
       if(d.sites.length>10000||d.orders.length>10000||d.trips.length>20000)throw new Error('الملف كبير جدًا');
       if(!d.sites.every((s:any)=>typeof s.id==='string'&&typeof s.name==='string'&&Number.isFinite(s.lat)&&Number.isFinite(s.lng)&&Number.isFinite(s.estimatedVolume)&&statuses[s.status as SiteStatus]) || !d.orders.every((o:any)=>typeof o.id==='string'&&typeof o.siteId==='string'&&workStatuses[o.status as WorkStatus]) || !d.trips.every((t:any)=>typeof t.id==='string'&&typeof t.orderId==='string'&&Number.isFinite(t.volume)&&tripStatuses[t.status as TripStatus]) || !d.audit.every((a:any)=>typeof a.action==='string'))throw new Error('بيانات غير صحيحة');
       if(!window.confirm('سيتم استبدال جميع البيانات التجريبية المخزنة في هذا المتصفح، هل توافق؟'))return;
-      setDb(d);setSelected(null);tell('تم استيراد النسخة التجريبية');
+      setDb({...d,vehicles:normalizeFleet(d.vehicles,d.trips)});setSelected(null);tell('تم استيراد النسخة التجريبية');
     }catch(e){tell('فشل الاستيراد: '+(e instanceof Error?e.message:'ملف غير صالح'));}
     finally{if(fileRef.current)fileRef.current.value='';}
   };
@@ -236,7 +290,7 @@ export default function App(){
           <section className="kpi-grid" aria-label="مؤشرات الأداء">
             <Kpi title="المواقع المسجلة" value={fmt(db.sites.length)} suffix="موقع" desc="مواقع ضمن بيانات العرض" icon={MapPin} shade="teal" />
             <Kpi title="حجم الركام التقديري" value={fmt(totalEstimate)} suffix="م³" desc="تقديرات تدريبية غير معتمدة" icon={Layers3} shade="blue" />
-            <Kpi title="الحمولات المستلمة" value={fmt(received)} suffix="م³" desc="حسب إثباتات الاستلام التجريبية" icon={Truck} shade="purple" />
+            <Kpi title="الحمولات المستلمة" value={fmt(received)} suffix="م³" desc="محاضر استلام بقياس منفصل في هذه النسخة" icon={Truck} shade="purple" />
             <Kpi title="تحتاج مراجعة سلامة" value={fmt(unreviewed)} suffix="موقع" desc="موقوفة عن الاعتماد" icon={ShieldAlert} shade="orange" />
           </section>
           <section className="two-col main-dashboard"><div className="panel map-panel"><CardTitle title="التوزيع المكاني للركام" sub="اضغط على نقطة لعرض سجل الموقع" action={<button className="text-link" onClick={()=>changePage('sites')}>استعراض الخريطة <ArrowLeft size={15}/></button>}/><MapView sites={db.sites} selectedId={selected} onPick={openSite}/></div><div className="panel insight-panel"><CardTitle title="الحالة التشغيلية" sub="توزيع مواقع العرض حسب حالة المتابعة"/><div className="donut-line"><div className="donut" style={{background:`conic-gradient(#5FA9A6 0 ${db.sites.filter(s=>s.status==='active').length/Math.max(1,db.sites.length)*100}%, #C18A39 ${db.sites.filter(s=>s.status==='active').length/Math.max(1,db.sites.length)*100}% ${((db.sites.filter(s=>s.status==='active'||s.status==='needs_review').length)/Math.max(1,db.sites.length))*100}%, #A9A18D ${((db.sites.filter(s=>s.status==='active'||s.status==='needs_review').length)/Math.max(1,db.sites.length))*100}% 100%)`}}><div><b>{fmt(db.sites.length)}</b><small>إجمالي المواقع</small></div></div><div className="status-list"><div><i style={{background:'#5FA9A6'}}/>قيد المتابعة <strong>{fmt(db.sites.filter(s=>s.status==='active').length)}</strong></div><div><i style={{background:'#C18A39'}}/>بانتظار مراجعة <strong>{fmt(db.sites.filter(s=>s.status==='needs_review').length)}</strong></div><div><i style={{background:'#A9A18D'}}/>حالات أخرى <strong>{fmt(db.sites.filter(s=>!['active','needs_review'].includes(s.status)).length)}</strong></div></div></div><div className="mini-divider"/><div className="insight-summary"><span><b>{fmt(activeOrders)}</b> أوامر قيد المتابعة</span><span><b>{fmt(inTransit)}</b> م³ قيد الاستلام</span></div></div></section>
@@ -250,25 +304,35 @@ export default function App(){
         </>}
 
         {page==='survey'&&<SurveyWorkspace sites={db.sites} onCreate={saveSurvey} onViewSites={()=>changePage('sites')}/>}
-        {page==='orders'&&<><section className="kpi-grid kpi-three"><Kpi title="إجمالي أوامر العمل" value={fmt(db.orders.length)} suffix="أمر" desc="الأوامر المنشأة في العرض" icon={ClipboardList} shade="blue"/><Kpi title="الأوامر النشطة" value={fmt(activeOrders)} suffix="أمر" desc="معتمدة أو قيد المتابعة" icon={Activity} shade="teal"/><Kpi title="مسودات وتحت الإعداد" value={fmt(db.orders.filter(o=>o.status==='draft').length)} suffix="أمر" desc="لم تعتمد إداريًا" icon={Clock3} shade="orange"/></section><section className="panel data-table-panel"><CardTitle title="قائمة أوامر العمل" sub="لا يمكن اعتماد أمر يرتبط بموقع لم تُراجع سلامته"/><div className="table-scroll"><table><thead><tr><th>رقم الأمر</th><th>موقع الركام</th><th>فريق التنفيذ</th><th>الكمية المستهدفة</th><th>الحالة</th><th>تغيير الحالة</th></tr></thead><tbody>{db.orders.map(o=><tr key={o.id}><td className="mono">{o.id}</td><td><b>{db.sites.find(s=>s.id===o.siteId)?.name||'موقع غير معروف'}</b><small>{o.siteId}</small></td><td>{o.contractor}</td><td>{fmt(o.targetVolume)} م³</td><td><span className="badge badge-blue">{workStatuses[o.status]}</span></td><td><select aria-label={'تغيير حالة '+o.id} value={o.status} onChange={e=>changeOrder(o,e.target.value as WorkStatus)}>{Object.entries(workStatuses).map(([k,v])=><option value={k} key={k}>{v}</option>)}</select></td></tr>)}</tbody></table>{!db.orders.length&&<Empty title="لا توجد أوامر" detail="أنشئ أمر عمل مرتبطًا بموقع تمت مراجعته"/>}</div></section></>}
+        {page==='orders'&&<><section className="kpi-grid kpi-three"><Kpi title="إجمالي أوامر العمل" value={fmt(db.orders.length)} suffix="أمر" desc="الأوامر المنشأة في العرض" icon={ClipboardList} shade="blue"/><Kpi title="الأوامر النشطة" value={fmt(activeOrders)} suffix="أمر" desc="معتمدة أو قيد المتابعة" icon={Activity} shade="teal"/><Kpi title="مسودات وتحت الإعداد" value={fmt(db.orders.filter(o=>o.status==='draft').length)} suffix="أمر" desc="لم تعتمد إداريًا" icon={Clock3} shade="orange"/></section><section className="panel data-table-panel"><CardTitle title="قائمة أوامر العمل" sub="لا يمكن اعتماد أمر يرتبط بموقع لم تُراجع سلامته"/><div className="table-scroll"><table><thead><tr><th>رقم الأمر</th><th>موقع الركام</th><th>فريق التنفيذ</th><th>الكمية المستهدفة</th><th>الحالة</th><th>المحمّل</th><th>المستلم بمحضر</th><th>معلّقة</th><th>تقدم الاستلام</th><th>تغيير الحالة</th></tr></thead><tbody>{db.orders.map(o=><tr key={o.id}><td className="mono">{o.id}</td><td><b>{db.sites.find(s=>s.id===o.siteId)?.name||'موقع غير معروف'}</b><small>{o.siteId}</small></td><td>{o.contractor}</td><td>{fmt(o.targetVolume)} م³</td><td><span className="badge badge-blue">{workStatuses[o.status]}</span></td><td>{fmt(workOrderProgress(o,db.trips).loadedM3)} م³</td><td>{fmt(workOrderProgress(o,db.trips).confirmedM3)} م³</td><td>{fmt(workOrderProgress(o,db.trips).pendingTrips+workOrderProgress(o,db.trips).disputedTrips)} رحلة</td><td>{fmt(workOrderProgress(o,db.trips).progressPercent)}%</td><td><select aria-label={'تغيير حالة '+o.id} value={o.status} onChange={e=>changeOrder(o,e.target.value as WorkStatus)}>{Object.entries(workStatuses).map(([k,v])=><option value={k} key={k}>{v}</option>)}</select></td></tr>)}</tbody></table>{!db.orders.length&&<Empty title="لا توجد أوامر" detail="أنشئ أمر عمل مرتبطًا بموقع تمت مراجعته"/>}</div></section></>}
 
-        {page==='trips'&&<><section className="kpi-grid kpi-three"><Kpi title="رحلات مسجلة" value={fmt(db.trips.length)} suffix="رحلة" desc="سجل الحمولات التجريبي" icon={Truck} shade="blue"/><Kpi title="كمية مستلمة" value={fmt(received)} suffix="م³" desc="حسب سجلات الاستلام" icon={CheckCircle2} shade="teal"/><Kpi title="قيد المطابقة والاستلام" value={fmt(db.trips.filter(t=>t.status!=='received').length)} suffix="رحلة" desc="غير محسوبة ضمن المستلم" icon={AlertTriangle} shade="orange"/></section><section className="panel data-table-panel"><CardTitle title="سجل الحمولات" sub="لا تدخل الأحجام غير المستلمة ضمن إجمالي الكمية المعتمدة في العرض"/><div className="table-scroll"><table><thead><tr><th>رقم الحمولة</th><th>أمر العمل</th><th>الموقع</th><th>رمز المركبة</th><th>الكمية</th><th>مرفق الاستلام</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody>{db.trips.map(t=><tr key={t.id}><td className="mono">{t.id}</td><td className="mono">{orderLabel(t.orderId)}</td><td>{orderSite(t.orderId)}</td><td className="mono">{t.vehicle}</td><td>{fmt(t.volume)} م³</td><td>{t.facility}</td><td><span className={'badge badge-'+tripStatuses[t.status].tone}>{tripStatuses[t.status].label}</span></td><td><select aria-label={'حالة الحمولة '+t.id} value={t.status} onChange={e=>changeTrip(t,e.target.value as TripStatus)}>{Object.entries(tripStatuses).map(([k,v])=><option value={k} key={k}>{v.label}</option>)}</select></td></tr>)}</tbody></table>{!db.trips.length&&<Empty title="لا توجد حمولات" detail="سجل حمولة جديدة لأمر عمل معتمد"/>}</div></section></>}
+        {page==='trips'&&<OperationsWorkspace view="trips" db={db} onDispatch={()=>setDialog('trip')} onAddVehicle={saveVehicle} onToggleVehicle={toggleVehicle} onReceive={receiveTrip} onResolve={settleTrip} onExport={exportOperationsCsv}/>}
+        {page==='fleet'&&<OperationsWorkspace view="fleet" db={db} onDispatch={()=>setDialog('trip')} onAddVehicle={saveVehicle} onToggleVehicle={toggleVehicle} onReceive={receiveTrip} onResolve={settleTrip} onExport={exportOperationsCsv}/>}
+        {page==='reconciliation'&&<OperationsWorkspace view="reconciliation" db={db} onDispatch={()=>setDialog('trip')} onAddVehicle={saveVehicle} onToggleVehicle={toggleVehicle} onReceive={receiveTrip} onResolve={settleTrip} onExport={exportOperationsCsv}/>}
 
-        {page==='facilities'&&<><div className="facilities-grid">{facilities.map((facility,i)=>{const trips=db.trips.filter(t=>t.facility===facility);const volume=trips.filter(t=>t.status==='received').reduce((a,t)=>a+Number(t.volume),0);const pending=trips.filter(t=>t.status!=='received').length;return <div className="panel facility-card" key={facility}><div className="facility-top"><div className="facility-icon"><Factory size={25}/></div><span className="badge badge-blue">تجريبي</span></div><h3>{facility}</h3><p>مركز استلام توضيحي — لا يمثل مرفقًا فعليًا</p><div className="facility-volume"><b>{fmt(volume)}</b><span>م³ مستلمة</span></div><div className="facility-bottom"><span><Truck size={15}/>{fmt(trips.length)} حمولة</span><span><Clock3 size={15}/>{fmt(pending)} غير مكتملة</span></div></div>})}</div><section className="panel"><CardTitle title="سجل الاستلام" sub="الاحتساب بناءً على حمولات حالتها مستلمة فقط"/><div className="table-scroll"><table><thead><tr><th>المرفق</th><th>الحمولات المسجلة</th><th>المستلمة</th><th>تحتاج استلامًا أو مطابقة</th><th>كمية الاستلام</th></tr></thead><tbody>{facilities.map(name=>{const t=db.trips.filter(x=>x.facility===name);return <tr key={name}><td><b>{name}</b></td><td>{fmt(t.length)}</td><td>{fmt(t.filter(x=>x.status==='received').length)}</td><td>{fmt(t.filter(x=>x.status!=='received').length)}</td><td>{fmt(t.filter(x=>x.status==='received').reduce((sum,x)=>sum+Number(x.volume),0))} م³</td></tr>})}</tbody></table></div></section></>}
+                {page==='facilities'&&<><div className="facilities-grid">{facilities.map(facility=>{const t=db.trips.filter(x=>x.facility===facility),p=receiptMetrics(t);return <div className="panel facility-card" key={facility}>
+          <div className="facility-top"><div className="facility-icon"><Factory size={25}/></div><span className="badge badge-blue">تجريبي</span></div>
+          <h3>{facility}</h3><p>مركز افتراضي — لا يمثل منشأة حقيقية أو ميزان قياس فعلي</p>
+          <div className="facility-volume"><b>{fmt(p.confirmedM3)}</b><span>م³ مسجلة بمحضر محلي</span></div>
+          <div className="facility-bottom"><span><Truck size={15}/>{fmt(p.totalTrips)} حمولة</span><span><Clock3 size={15}/>{fmt(p.pendingTrips+p.disputedTrips)} معلقة</span></div>
+          <p className="note-text">سجلات قديمة غير مؤكدة: {fmt(p.legacyM3)} م³</p>
+        </div>})}</div>
+        <OperationsWorkspace view="reports" db={db} onDispatch={()=>setDialog('trip')} onAddVehicle={saveVehicle} onToggleVehicle={toggleVehicle} onReceive={receiveTrip} onResolve={settleTrip} onExport={exportOperationsCsv}/>
+        </>
 
-        {page==='reports'&&<><section className="kpi-grid"><Kpi title="المواقع الكلية" value={fmt(db.sites.length)} suffix="موقع" desc="موجودة في السجل المحلي" icon={MapPin} shade="blue"/><Kpi title="كميات مقدرة" value={fmt(totalEstimate)} suffix="م³" desc="غير مساوية للكميات المنقولة" icon={Layers3} shade="purple"/><Kpi title="كميات مستلمة" value={fmt(received)} suffix="م³" desc="بحسب إثباتات الاستلام" icon={CheckCircle2} shade="teal"/><Kpi title="مواقع لم تُراجع" value={fmt(unreviewed)} suffix="موقع" desc="تحتاج تحققًا مختصًا" icon={ShieldAlert} shade="orange"/></section><section className="two-col"><div className="panel"><CardTitle title="توزيع الكميات التقديرية" sub="حسب المحافظة في بيانات التدريب"/><div className="gov-chart gov-chart-big">{totalByGov.map(x=><div className="gov-row" key={x.g}><div><span>{x.g}</span><b>{fmt(x.vol)} م³</b></div><div className="gov-bar"><span style={{width:(x.vol/Math.max(1,...totalByGov.map(i=>i.vol))*100)+'%'}}/></div></div>)}</div></div><div className="panel"><CardTitle title="مخرجات قابلة للتنزيل" sub="لا تُصدّر أي بيانات حقيقية أو مركزيّة"/><div className="download-list"><button onClick={csvExport}><FileSpreadsheet size={20}/><span><strong>سجل المواقع CSV</strong><small>للمراجعة في Excel</small></span><Download size={18}/></button><button onClick={geoExport}><FileJson size={20}/><span><strong>ملف المواقع GeoJSON</strong><small>للاستخدام في برامج GIS</small></span><Download size={18}/></button><button onClick={exportBackup}><Database size={20}/><span><strong>نسخة بيانات المشروع JSON</strong><small>تضم المواقع والأوامر والحمولات</small></span><Download size={18}/></button></div></div></section><section className="panel"><CardTitle title="معايير قراءة النتائج"/><div className="report-footnotes"><p><ShieldAlert size={18}/> المقادير التقديرية ليست قياسات تحميل أو أوزان فعلية، ولا يجوز جمعها مع الاستلام باعتبارها مؤشرات إنجاز متجانسة.</p><p><CheckCircle2 size={18}/> الكميات المستلمة تستخرج فقط من الحمولات التي تم توثيق حالتها تجريبيًا «مستلمة».</p><p><CloudOff size={18}/> البيانات محفوظة على هذا المتصفح فقط؛ لا يوجد اعتماد مؤسسي أو تدقيق مركزي حتى الآن.</p></div></section></>}
+                {page==='reports'&&<><section className="kpi-grid"><Kpi title="المواقع الكلية" value={fmt(db.sites.length)} suffix="موقع" desc="موجودة في السجل المحلي" icon={MapPin} shade="blue"/><Kpi title="كميات مقدرة" value={fmt(totalEstimate)} suffix="م³" desc="غير مساوية للكميات المنقولة" icon={Layers3} shade="purple"/><Kpi title="كميات مستلمة" value={fmt(received)} suffix="م³" desc="قياس منفصل برقم محضر محلي فقط" icon={CheckCircle2} shade="teal"/><Kpi title="مواقع لم تُراجع" value={fmt(unreviewed)} suffix="موقع" desc="تحتاج تحققًا مختصًا" icon={ShieldAlert} shade="orange"/></section><section className="two-col"><div className="panel"><CardTitle title="توزيع الكميات التقديرية" sub="حسب المحافظة في بيانات التدريب"/><div className="gov-chart gov-chart-big">{totalByGov.map(x=><div className="gov-row" key={x.g}><div><span>{x.g}</span><b>{fmt(x.vol)} م³</b></div><div className="gov-bar"><span style={{width:(x.vol/Math.max(1,...totalByGov.map(i=>i.vol))*100)+'%'}}/></div></div>)}</div></div><div className="panel"><CardTitle title="مخرجات قابلة للتنزيل" sub="لا تُصدّر أي بيانات حقيقية أو مركزيّة"/><div className="download-list"><button onClick={csvExport}><FileSpreadsheet size={20}/><span><strong>سجل المواقع CSV</strong><small>للمراجعة في Excel</small></span><Download size={18}/></button><button onClick={geoExport}><FileJson size={20}/><span><strong>ملف المواقع GeoJSON</strong><small>للاستخدام في برامج GIS</small></span><Download size={18}/></button><button onClick={exportBackup}><Database size={20}/><span><strong>نسخة بيانات المشروع JSON</strong><small>تضم المواقع والأوامر والحمولات</small></span><Download size={18}/></button></div></div></section><section className="panel"><CardTitle title="معايير قراءة النتائج"/><div className="report-footnotes"><p><ShieldAlert size={18}/> المقادير التقديرية ليست قياسات تحميل أو أوزان فعلية، ولا يجوز جمعها مع الاستلام باعتبارها مؤشرات إنجاز متجانسة.</p><p><CheckCircle2 size={18}/> الكميات المستلمة تستخرج فقط من الحمولات التي تم توثيق حالتها تجريبيًا «مستلمة».</p><p><CloudOff size={18}/> البيانات محفوظة على هذا المتصفح فقط؛ لا يوجد اعتماد مؤسسي أو تدقيق مركزي حتى الآن.</p></div></section><OperationsWorkspace view="reports" db={db} onDispatch={()=>setDialog('trip')} onAddVehicle={saveVehicle} onToggleVehicle={toggleVehicle} onReceive={receiveTrip} onResolve={settleTrip} onExport={exportOperationsCsv}/></>}
 
         {page==='settings'&&<><section className="two-col settings-layout"><div className="panel"><CardTitle title="حفظ البيانات ونقلها" sub="نسخة محلية على الجهاز، لا توجد مزامنة تلقائية"/><div className="setting-actions"><button onClick={exportBackup}><Download size={20}/><span><strong>تنزيل نسخة احتياطية</strong><small>يحفظ السجلات في ملف JSON مستقل</small></span><ChevronLeft size={18}/></button><button onClick={()=>fileRef.current?.click()}><UploadCloud size={20}/><span><strong>استيراد نسخة تجريبية</strong><small>تستبدل السجلات المحلية بعد التأكيد</small></span><ChevronLeft size={18}/></button><button onClick={restore}><RotateCcw size={20}/><span><strong>إعادة بيانات العرض الأصلية</strong><small>يحذف التعديلات التجريبية في المتصفح</small></span><ChevronLeft size={18}/></button></div><input ref={fileRef} className="sr-only" type="file" accept=".json,application/json" onChange={e=>void importBackup(e.target.files?.[0])}/></div><div className="panel"><CardTitle title="حالة الجاهزية" sub="تحديد واضح لما هو متاح وما هو قيد التطوير"/><div className="readiness-list"><div><CheckCircle2 size={18}/><span>خرائط وإدارة بيانات توضيحية</span><b>متاح</b></div><div><CheckCircle2 size={18}/><span>التقارير والتصدير المحلي</span><b>متاح</b></div><div className="pending"><Clock3 size={18}/><span>PostGIS وقاعدة بيانات مركزية</span><b>لاحقًا</b></div><div className="pending"><Clock3 size={18}/><span>دخول المستخدمين والصلاحيات</span><b>لاحقًا</b></div><div className="pending"><Clock3 size={18}/><span>تدقيق مركزي واعتمادات فعلية</span><b>لاحقًا</b></div><div className="pending"><Clock3 size={18}/><span>مزامنة PWA والعمل الميداني</span><b>لاحقًا</b></div></div></div></section><section className="panel"><CardTitle title="سجل نشاط هذه النسخة" sub="سجل محلي توضيحي غير محصن ضد التعديل"/><div className="audit-list">{db.audit.slice(0,15).map(a=><div key={a.id}><div className="audit-dot"/><span>{a.action}</span><small>{a.at}</small></div>)}</div></section></>}
       </main>
-      <footer className="footer"><span>RukamGIS v0.2 · منصة تجريبية لإدارة بيانات الركام</span><span>غير مخصص للاستخدام التشغيلي الفعلي · © 2026</span></footer>
+      <footer className="footer"><span>RukamGIS v0.3 · منصة تجريبية لإدارة بيانات الركام</span><span>غير مخصص للاستخدام التشغيلي الفعلي · © 2026</span></footer>
     </div>
 
     {dialog&&<div className="dialog-shade" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setDialog(null)}}><div className="modal" role="dialog" aria-modal="true" aria-label={dialog==='site'?'إضافة موقع ركام':dialog==='order'?'إضافة أمر عمل':'إضافة حمولة'}><div className="modal-head"><div><span>RUKAMGIS / NEW RECORD</span><h2>{dialog==='site'?'إضافة موقع ركام':dialog==='order'?'إنشاء أمر عمل': 'تسجيل حمولة نقل'}</h2><p>يُحفظ السجل في متصفحك لغرض العرض فقط</p></div><button className="icon-button" onClick={()=>setDialog(null)} aria-label="إغلاق"><X size={20}/></button></div>
       <form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);if(dialog==='site')saveSite(f);else if(dialog==='order')saveOrder(f);else saveTrip(f)}}><div className="modal-body">
       {dialog==='site'&&<><div className="field-grid"><Field label="اسم الموقع"><input name="name" required minLength={3} placeholder="مثل قطاع تجريبي 08"/></Field><Field label="المحافظة"><select name="governorate">{governorates.map(g=><option key={g}>{g}</option>)}</select></Field><Field label="رمز المنطقة"><input name="area" required placeholder="منطقة تجريبية"/></Field><Field label="تصنيف الركام"><select name="category"><option>مختلط</option><option>خرسانة</option><option>مواد إنشائية</option><option>غير مصنف</option></select></Field><Field label="خط العرض Latitude"><input name="lat" type="number" step="any" min="-90" max="90" required placeholder="31.4"/></Field><Field label="خط الطول Longitude"><input name="lng" type="number" step="any" min="-180" max="180" required placeholder="34.4"/></Field><Field label="الكمية التقديرية (م³)"><input name="estimatedVolume" type="number" min="0" step="0.01" required placeholder="1000"/></Field></div><Field label="ملاحظات توضيحية"><textarea name="note" rows={3} placeholder="ملاحظات مختصرة عن السجل التجريبي"/></Field><div className="form-hint"><ShieldAlert size={17}/> يبدأ أي موقع جديد بحالة «بانتظار مراجعة السلامة»، ولا يمكن اعتماده تلقائيًا.</div></>}
       {dialog==='order'&&<><Field label="الموقع المرتبط"><select name="siteId" required>{reviewedOptions.map(s=><option value={s.id} key={s.id}>{s.name} · {s.id}</option>)}</select></Field><Field label="الفريق أو الجهة (تجريبي)"><input name="contractor" required placeholder="الفريق التجريبي"/></Field><Field label="الكمية المخططة (م³)"><input name="targetVolume" type="number" min="0.01" step="0.01" required/></Field><div className="form-hint"><ShieldAlert size={17}/> يُنشأ أمر العمل كمسودة ولا يعني اعتماد تنفيذ أو سلامة. تظهر فقط المواقع التي وُثقت مراجعتها تجريبيًا.</div>{reviewedOptions.length===0&&<p className="error-message">لا توجد مواقع تمت مراجعتها في بيانات العرض</p>}</>}
-      {dialog==='trip'&&<><Field label="أمر العمل"><select name="orderId" required>{activeOrderOptions.map(o=><option value={o.id} key={o.id}>{o.id} · {db.sites.find(s=>s.id===o.siteId)?.name}</option>)}</select></Field><Field label="رمز المركبة"><input name="vehicle" required placeholder="TRK-05"/></Field><Field label="كمية الحمولة (م³)"><input name="volume" type="number" min="0.01" step="0.01" required/></Field><Field label="مرفق الاستلام"><select name="facility">{facilities.map(f=><option key={f}>{f}</option>)}</select></Field><div className="form-hint"><Clock3 size={17}/> تسجل الحمولة بانتظار الاستلام، ولن تدخل في الإجمالي المستلم إلا بعد محاكاة توثيق الاستلام.</div>{activeOrderOptions.length===0&&<p className="error-message">لا يوجد أمر معتمد أو نشط لتسجيل حمولة عليه</p>}</>}
-      </div><div className="modal-footer"><button type="button" className="btn btn-outline" onClick={()=>setDialog(null)}>إلغاء</button><button type="submit" className="btn btn-primary" disabled={dialog==='order'&&!reviewedOptions.length||dialog==='trip'&&!activeOrderOptions.length}><Plus size={17}/> حفظ السجل التجريبي</button></div></form>
+      {dialog==='trip'&&<><Field label="أمر العمل"><select name="orderId" required>{activeOrderOptions.map(o=><option value={o.id} key={o.id}>{o.id} · {db.sites.find(s=>s.id===o.siteId)?.name}</option>)}</select></Field><Field label="المركبة المسجلة"><select name="vehicle" required>{db.vehicles.filter(v=>v.active).map(v=><option value={v.code} key={v.code}>{v.code} — سعة {fmt(v.capacityM3)} م³</option>)}</select></Field><Field label="كمية الحمولة (م³)"><input name="volume" type="number" min="0.01" step="0.01" required/></Field><Field label="مرفق الاستلام"><select name="facility">{facilities.map(f=><option key={f}>{f}</option>)}</select></Field><div className="form-hint"><Clock3 size={17}/> تسجل الحمولة بانتظار الاستلام، ولن تدخل في الإجمالي المستلم إلا بعد محاكاة توثيق الاستلام.</div>{activeOrderOptions.length===0&&<p className="error-message">لا يوجد أمر معتمد أو نشط لتسجيل حمولة عليه</p>}</>}
+      </div><div className="modal-footer"><button type="button" className="btn btn-outline" onClick={()=>setDialog(null)}>إلغاء</button><button type="submit" className="btn btn-primary" disabled={dialog==='order'&&!reviewedOptions.length||dialog==='trip'&&!activeOrderOptions.length||dialog==='trip'&&!db.vehicles.some(v=>v.active)}><Plus size={17}/> حفظ السجل التجريبي</button></div></form>
       </div></div>}
     {toast&&<div className="toast" role="status"><CheckCircle2 size={18}/>{toast}<button onClick={()=>setToast('')} aria-label="إغلاق"><X size={16}/></button></div>}
   </div>;

@@ -1,0 +1,35 @@
+/* RukamGIS v0.3 – operations ledger, aligned with approved Earth Theme */
+.ops-stack{display:flex;flex-direction:column;gap:17px}
+.ops-banner{display:flex;align-items:flex-start;gap:13px;padding:19px 21px;border:1px solid #DCD0BD;border-radius:14px;background:#FFF8EE;color:#684F37}
+.ops-banner svg{flex:none;color:#9B553D}
+.ops-banner b{color:#3D493D;font-size:13px}
+.ops-banner p{font-size:10px;line-height:1.9;margin:6px 0 0;color:#647064}
+.ops-stat-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:11px}
+.ops-stat{display:flex;flex-direction:column;gap:8px;padding:16px;border:1px solid #E0D5C8;border-radius:13px;background:#FFFCF8;min-height:116px}
+.ops-stat>span{font-size:10px;font-weight:700;color:#666B61}
+.ops-stat strong{font-size:17px;color:#75503B;white-space:nowrap}
+.ops-stat small{font-size:9px;color:#6B786A;line-height:1.7}
+.ops-pad{padding:21px}
+.ops-pad h3{color:#394737;font-size:14px}
+.ops-fleet-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;align-items:end;gap:12px}
+.ops-fleet-form label,.ops-dialog-fields label{display:flex;flex-direction:column;gap:8px;color:#4D594D;font-size:11px;font-weight:700;min-width:0}
+.ops-fleet-form input,.ops-dialog-fields input,.ops-dialog-fields textarea{width:100%;min-height:40px;padding:10px 12px;color:#323C32;border:1px solid #D4C8B7;border-radius:8px;background:#FFFCF8}
+.ops-fleet-form .btn{height:40px}
+.ops-head-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ops-head-actions .btn{height:35px}
+.ops-search{padding:0 20px 14px}
+.ops-search input{width:min(480px,100%);font-size:11px;background:#FFFDF9;border:1px solid #D7CABB;border-radius:8px;min-height:39px;color:#334033;padding:8px 12px}
+.ops-progress{background:#E7E0D6;height:7px;width:90px;overflow:hidden;border-radius:20px}
+.ops-progress span{background:#739775;display:block;height:100%;border-radius:20px}
+.ops-empty{padding:24px;color:#707C6C;text-align:center;font-size:11px}
+.ops-note{font-size:10px;color:#647463}
+.ops-dialog{width:min(520px,100%)}
+.ops-dialog-fields{display:flex;flex-direction:column;gap:15px}
+.ops-hint{display:flex;align-items:flex-start;gap:8px;font-size:10px;line-height:1.9;background:#FFF3DF;border:1px solid #E6CFAC;border-radius:9px;color:#715326;padding:10px 12px;margin:0}
+.ops-hint svg{flex:none;margin-top:2px}
+.ops-compare{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.ops-compare div{padding:14px;background:#F3EBDD;border:1px solid #E6DAC8;border-radius:9px;font-size:10px;display:flex;flex-direction:column;gap:8px}
+.ops-compare b{font-size:17px;color:#80543A}
+@media(max-width:1350px){.ops-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:960px){.ops-fleet-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.ops-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-stat{padding:12px}.ops-stat strong{font-size:15px}.ops-fleet-form{grid-template-columns:1fr}.ops-banner{padding:14px}.ops-head-actions{flex-wrap:wrap}.ops-head-actions .btn{height:35px}.ops-compare{grid-template-columns:1fr}}

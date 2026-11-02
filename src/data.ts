@@ -10,9 +10,13 @@ export type Site = {
   survey?: SurveyEstimate & {recordedAt:string; riskFlags:string[]};
 };
 export type WorkOrder = { id: string; siteId: string; contractor: string; targetVolume: number; status: WorkStatus; createdAt: string };
-export type Trip = { id: string; orderId: string; vehicle: string; volume: number; facility: string; status: TripStatus; date: string };
+export type FleetVehicle = { code:string; capacityM3:number; active:boolean; kind:string };
+export type Trip = { id: string; orderId: string; vehicle: string; volume: number; facility: string; status: TripStatus; date: string;
+  receivedVolume?:number; receiptRef?:string; receivedAt?:string; discrepancyM3?:number;
+  reconciliationNote?:string; reconciledAt?:string;
+};
 export type Audit = { id: string; action: string; at: string };
-export type DataStore = { sites: Site[]; orders: WorkOrder[]; trips: Trip[]; audit: Audit[] };
+export type DataStore = { sites: Site[]; orders: WorkOrder[]; trips: Trip[]; vehicles:FleetVehicle[]; audit: Audit[] };
 export const governorates = ['شمال غزة','غزة','الوسطى','خان يونس','رفح'];
 export const statuses: Record<SiteStatus,{label:string; tone:string}> = {
   needs_review: { label:'بانتظار مراجعة السلامة',tone:'amber' },
@@ -49,6 +53,7 @@ export const seed: DataStore = {
     {id:'TR-003',orderId:'WO-003',vehicle:'TRK-03',volume:10,facility:'مرفق تجريبي A',status:'received',date:now},
     {id:'TR-004',orderId:'WO-001',vehicle:'TRK-04',volume:11,facility:'مرفق تجريبي C',status:'disputed',date:now}
   ],
+  vehicles:['TRK-01','TRK-02','TRK-03','TRK-04'].map(code=>({code,capacityM3:30,active:true,kind:'شاحنة تجريبية'})),
   audit:[{id:'A-001',action:'تهيئة بيانات العرض التجريبية',at:now}]
 };
 export const number = (n:number) => new Intl.NumberFormat('ar-PS',{maximumFractionDigits:1}).format(n||0);
