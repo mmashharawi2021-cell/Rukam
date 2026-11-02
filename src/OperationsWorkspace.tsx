@@ -51,9 +51,9 @@ export default function OperationsWorkspace({view,db,onDispatch,onAddVehicle,onT
  const ledger=<div className="ops-stat-grid" aria-label="مؤشرات النقل والمطابقة">
    <Stat label="كمية التحميل المسجلة" value={fmt(metrics.loadedM3)+' م³'} hint="إجمالي الرحلات — ليست كمية مستلمة"/>
    <Stat label="استلام بكمية موثقة محليًا" value={fmt(metrics.confirmedM3)+' م³'} hint={fmt(metrics.confirmedTrips)+' محضر تجريبي قابل للمراجعة'}/>
-   <Stat label="بانتظار الاستلام" value={fmt(metrics.pendingTrips)+' رحلة'} hint={fmt(metrics.pendingM3)+' م³ محمّلة'/>
-   <Stat label="فروقات معلقة" value={fmt(metrics.disputedTrips)+' رحلة'} hint={fmt(metrics.disputedLoadedM3)+' م³ قيد المطابقة'/>
-   <Stat label="سجلات قديمة" value={fmt(metrics.legacyTrips)+' رحلة'} hint={fmt(metrics.legacyM3)+' م³ غير موثقة بقياس مستقل'/>
+   <Stat label="بانتظار الاستلام" value={fmt(metrics.pendingTrips)+' رحلة'} hint={fmt(metrics.pendingM3)+' م³ محمّلة'}/>
+   <Stat label="فروقات معلقة" value={fmt(metrics.disputedTrips)+' رحلة'} hint={fmt(metrics.disputedLoadedM3)+' م³ قيد المطابقة'}/>
+   <Stat label="سجلات قديمة" value={fmt(metrics.legacyTrips)+' رحلة'} hint={fmt(metrics.legacyM3)+' م³ غير موثقة بقياس مستقل'}/>
  </div>;
  if(view==='fleet')return <div className="ops-stack">
   <div className="ops-banner"><Truck size={22}/><div><b>سجل أسطول النقل التجريبي</b><p>أرقام المركبات وسعاتها بيانات تدريبية وليست تتبعًا مباشرًا أو تصريح تشغيل.</p></div></div>
