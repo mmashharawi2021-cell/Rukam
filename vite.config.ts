@@ -1,3 +1,4 @@
+declare const process: { env: { VERCEL?: string } };
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
